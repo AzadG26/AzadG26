@@ -1,149 +1,183 @@
-// Game settings and initial variables
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
 let score = 0;
-let highScore = localStorage.getItem("highScore") || 0;
-let level = 1;
-let slices = 0;
-let gamePaused = false;
+let highScore = 0;
+let level = 0;
+let objectsSliced = 0;
 let gameOver = false;
-const gameSpeed = 1;
+const maxLevels = 6;
+
+// Game controls
+document.getElementById('pauseResume').addEventListener('click', togglePause);
+document.getElementById('tryAgain').addEventListener('click', restartGame);
+document.getElementById('skipLevel').addEventListener('click', skipLevel);
+document.getElementById('restart').addEventListener('click', restartGame);
+
+// Define game objects
 const objects = [];
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const colors = ['#67d7f0', '#a6e02c', '#fa2473', '#fe9522'];
+let spawnInterval;
 
-document.getElementById("highScore").textContent = highScore;
+// Game loop
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawObjects();
+  updateObjects();
 
-// Game control elements
-const scoreDisplay = document.getElementById("score");
-const finalScoreDisplay = document.getElementById("finalScore");
-const gameOverMessage = document.getElementById("gameOverMessage");
-const portfolioHeader = document.getElementById("portfolioHeader");
+  if (!gameOver) {
+    requestAnimationFrame(gameLoop);
+  }
+}
 
-// Functions for handling game states
-function updateScore(value) {
-  score += value;
-  scoreDisplay.textContent = score;
+function drawObjects() {
+  for (let obj of objects) {
+    ctx.fillStyle = obj.color;
+    ctx.beginPath();
+    ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function updateObjects() {
+  for (let i = objects.length - 1; i >= 0; i--) {
+    objects[i].y -= 2; // Move object up
+    if (objects[i].y < 0) {
+      objects.splice(i, 1); // Remove off-screen objects
+      gameOver = true;
+      showGameOver();
+    }
+  }
+}
+
+// Spawn objects
+function spawnObject() {
+  const size = Math.random() * 30 + 20;
+  const x = Math.random() * (canvas.width - size);
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  objects.push({ x, y: canvas.height + size, size, color });
+}
+
+function togglePause() {
+  if (gameOver) return;
+  if (spawnInterval) {
+    clearInterval(spawnInterval);
+    spawnInterval = null;
+  } else {
+    spawnInterval = setInterval(spawnObject, 1000);
+  }
+}
+
+// Mouse interaction
+canvas.addEventListener('mousemove', sliceObject);
+canvas.addEventListener('mousedown', (e) => {
+  sliceObject(e);
+  canvas.addEventListener('mousemove', sliceObject);
+});
+canvas.addEventListener('mouseup', () => {
+  canvas.removeEventListener('mousemove', sliceObject);
+});
+canvas.addEventListener('touchstart', (e) => {
+  sliceObject(e.touches[0]);
+  canvas.addEventListener('touchmove', (e) => {
+    sliceObject(e.touches[0]);
+  });
+});
+canvas.addEventListener('touchend', () => {
+  canvas.removeEventListener('touchmove', sliceObject);
+});
+
+// Slice objects
+function sliceObject(e) {
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const obj = objects[i];
+    const dist = Math.sqrt((mouseX - obj.x) ** 2 + (mouseY - obj.y) ** 2);
+    if (dist < obj.size) {
+      objects.splice(i, 1);
+      score += 10;
+      objectsSliced++;
+
+      if (objectsSliced % 5 === 0) {
+        level++;
+        if (level < maxLevels) {
+          unlockSections();
+        } else {
+          // If max level reached, game over
+          showGameOver();
+        }
+      }
+
+      updateScore();
+      break;
+    }
+  }
+}
+
+function updateScore() {
+  document.getElementById('score').innerText = score;
   if (score > highScore) {
     highScore = score;
-    localStorage.setItem("highScore", highScore);
-    document.getElementById("highScore").textContent = highScore;
+    document.getElementById('highScore').innerText = highScore;
   }
 }
 
-function levelUp() {
-  level++;
-  slices = 0;
-  unlockPortfolioSection();
-}
-
-function unlockPortfolioSection() {
-  portfolioHeader.classList.remove("hidden");
-  const sections = ["aboutLink", "educationLink", "skillsLink", "experienceLink", "projectsLink", "contactLink"];
-  if (level <= sections.length) {
-    document.getElementById(sections[level - 1]).classList.remove("hidden");
+function unlockSections() {
+  if (level === 1) {
+    document.getElementById('portfolioHeader').classList.remove('hidden');
+    document.getElementById('aboutLink').classList.remove('hidden');
+  } else if (level === 2) {
+    document.getElementById('skillsLink').classList.remove('hidden');
+  } else if (level === 3) {
+    document.getElementById('experienceLink').classList.remove('hidden');
+  } else if (level === 4) {
+    document.getElementById('educationLink').classList.remove('hidden');
+  } else if (level === 5) {
+    document.getElementById('contactLink').classList.remove('hidden');
   }
 }
 
-function gameOverScreen() {
-  gameOver = true;
-  finalScoreDisplay.textContent = score;
-  gameOverMessage.classList.remove("hidden");
+function showGameOver() {
+  document.getElementById('finalScore').innerText = score;
+  document.getElementById('gameOverMessage').classList.remove('hidden');
 }
 
-function resetGame() {
+// Restart game
+function restartGame() {
   score = 0;
-  level = 1;
-  slices = 0;
-  scoreDisplay.textContent = score;
-  gameOverMessage.classList.add("hidden");
-  portfolioHeader.classList.add("hidden");
+  level = 0;
+  objectsSliced = 0;
+  objects.length = 0;
   gameOver = false;
-  gamePaused = false;
+  document.getElementById('gameOverMessage').classList.add('hidden');
+  document.getElementById('score').innerText = score;
+  document.getElementById('highScore').innerText = highScore;
+  document.getElementById('portfolioHeader').classList.add('hidden');
+  resetLinks();
+  spawnInterval = setInterval(spawnObject, 1000);
+  gameLoop();
 }
 
-// Object creation and slicing mechanics
-function createObject() {
-  const x = Math.random() * canvas.width;
-  const size = 30 + Math.random() * 20;
-  const color = `hsl(${Math.random() * 360}, 100%, 50%)`;
-  const object = { x, y: canvas.height, size, color, sliced: false };
-  objects.push(object);
+// Skip level
+function skipLevel() {
+  level++;
+  unlockSections();
 }
 
-function drawObject(obj) {
-  ctx.fillStyle = obj.color;
-  ctx.beginPath();
-  ctx.arc(obj.x, obj.y, obj.size, 0, Math.PI * 2);
-  ctx.fill();
+// Reset section links
+function resetLinks() {
+  document.getElementById('aboutLink').classList.add('hidden');
+  document.getElementById('skillsLink').classList.add('hidden');
+  document.getElementById('experienceLink').classList.add('hidden');
+  document.getElementById('educationLink').classList.add('hidden');
+  document.getElementById('contactLink').classList.add('hidden');
 }
 
-function sliceObject(object) {
-  object.sliced = true;
-  updateScore(10);
-  slices++;
-  if (slices >= 5) {
-    levelUp();
-  }
-}
-
-function animate() {
-  if (gameOver || gamePaused) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  objects.forEach((object, index) => {
-    if (!object.sliced) {
-      object.y -= 2 * gameSpeed;
-      drawObject(object);
-    } else {
-      objects.splice(index, 1);
-    }
-
-    if (object.y < 0 && !object.sliced) {
-      gameOverScreen();
-    }
-  });
-
-  requestAnimationFrame(animate);
-}
-
-canvas.addEventListener("mousemove", (event) => {
-  objects.forEach((object) => {
-    const dx = event.clientX - object.x;
-    const dy = event.clientY - object.y;
-    if (Math.sqrt(dx * dx + dy * dy) < object.size) {
-      sliceObject(object);
-    }
-  });
-});
-
-canvas.addEventListener("touchmove", (event) => {
-  const touch = event.touches[0];
-  objects.forEach((object) => {
-    const dx = touch.clientX - object.x;
-    const dy = touch.clientY - object.y;
-    if (Math.sqrt(dx * dx + dy * dy) < object.size) {
-      sliceObject(object);
-    }
-  });
-});
-
-document.getElementById("pauseResume").addEventListener("click", () => {
-  gamePaused = !gamePaused;
-  if (!gamePaused) animate();
-});
-
-document.getElementById("tryAgain").addEventListener("click", resetGame);
-document.getElementById("restart").addEventListener("click", () => {
-  resetGame();
-  animate();
-});
-
-document.getElementById("skipLevel").addEventListener("click", () => {
-  if (level < 6) levelUp();
-});
-
-window.onload = () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  animate();
-  setInterval(createObject, 1000);
-};
+// Start the game
+spawnInterval = setInterval(spawnObject, 1000);
+gameLoop();
